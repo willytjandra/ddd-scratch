@@ -8,8 +8,13 @@
 
   <ItemGroup>
     <None Remove="Customers\" />
+    <None Remove="Primitives\" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Customers\" />
+    <Folder Include="Primitives\" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MediatR.Contracts" Version="2.0.1" />
   </ItemGroup>
 </Project>

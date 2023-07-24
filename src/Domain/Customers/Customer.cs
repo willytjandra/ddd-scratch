@@ -1,6 +1,8 @@
-﻿namespace Domain.Customers;
+﻿using Domain.Primitives;
 
-public class Customer
+namespace Domain.Customers;
+
+public class Customer : Entity
 {
 	private Customer()
 	{
@@ -18,12 +20,16 @@ public class Customer
 
 	public static Customer New(string firstName, string lastName, string email)
 	{
-		return new Customer
+		var customer = new Customer
 		{
 			Id = new CustomerId(Guid.NewGuid()),
 			FirstName = firstName,
 			LastName = lastName,
 			Email = email,
 		};
+
+		customer.Raise(new CustomerRegisteredDomainEvent(Guid.NewGuid(), customer.Id));
+
+		return customer;
 	}
 }
