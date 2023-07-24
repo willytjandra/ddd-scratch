@@ -1,4 +1,8 @@
+using Application.Customers.GetAllCustomers;
+using Application.Customers.GetCustomerById;
+using Application.Customers.RegisterNewCustomer;
 using Domain.Customers;
+using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -16,6 +20,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(optionsBuilder =>
     optionsBuilder.UseNpgsql(connectionString);
 });
 
+builder.Services.AddMediatR(cfg =>
+    cfg.RegisterServicesFromAssembly(Application.AssemblyReference.Assembly));
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -29,36 +36,51 @@ else
     app.UseHttpsRedirection();
 }
 
-app.MapGet("/customers", async (ApplicationDbContext dbContext) => {
-    var customers = await dbContext.Customers.ToListAsync();
-    return customers;
-})
+app.MapGet("/customers", async Task<Results<Ok<IReadOnlyCollection<Application.Customers.GetAllCustomers.CustomerDto>>, NotFound>>  (
+    ISender sender,
+    CancellationToken cancellationToken) => {
+
+        var query = new GetAllCustomersQuery();
+
+        var customers = await sender.Send(query, cancellationToken);
+        if (!customers.Any())
+        {
+            return TypedResults.NotFound();
+        }
+
+        return TypedResults.Ok(customers);
+    })
 .WithName("GetAllCustomers")
 .WithOpenApi();
 
-
-app.MapGet("/customers/{id:Guid}", async Task<Results<Ok<Customer>, NotFound>> (
+app.MapGet("/customers/{id:Guid}", async Task<Results<Ok<Application.Customers.GetCustomerById.CustomerDto>, NotFound>> (
     Guid id,
-    ApplicationDbContext dbContext) => {
+    ISender sender,
+    CancellationToken cancellationToken) => {
 
-        var customerId = new CustomerId(id);
-        var customer = await dbContext.Customers.FindAsync(customerId);
-        if (customer is null)
+        var query = new GetCustomerByIdQuery(new CustomerId(id));
+
+        var customerDto = await sender.Send(query, cancellationToken);
+
+        if (customerDto is null)
         {
             return TypedResults.NotFound();
         }
         else
         {
-            return TypedResults.Ok(customer);
+            return TypedResults.Ok(customerDto);
         }
     })
 .WithName("GetCustomer")
 .WithOpenApi();
 
-app.MapPost("/customers", async (RegisterNewCustomerRequest request, ApplicationDbContext dbContext) =>
+app.MapPost("/customers", async (
+    RegisterNewCustomerRequest request,
+    ISender sender,
+    CancellationToken cancellationToken) =>
 {
-    dbContext.Set<Customer>().Add(Customer.New(request.FirstName, request.LastName, request.Email));
-    await dbContext.SaveChangesAsync();
+    var command = new RegisterNewCustomerCommand(request.FirstName, request.LastName, request.Email);
+    await sender.Send(command, cancellationToken);
 })
 .WithName("RegisterNewCustomer")
 .WithOpenApi();
