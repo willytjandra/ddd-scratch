@@ -1,9 +1,20 @@
+using Domain.Customers;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
+using Persistence;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddDbContext<ApplicationDbContext>(optionsBuilder =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("Database");
+    optionsBuilder.UseNpgsql(connectionString);
+});
 
 var app = builder.Build();
 
@@ -13,32 +24,45 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-app.UseHttpsRedirection();
-
-var summaries = new[]
+else
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    app.UseHttpsRedirection();
+}
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
+app.MapGet("/customers", async (ApplicationDbContext dbContext) => {
+    var customers = await dbContext.Customers.ToListAsync();
+    return customers;
 })
-.WithName("GetWeatherForecast")
+.WithName("GetAllCustomers")
+.WithOpenApi();
+
+
+app.MapGet("/customers/{id:Guid}", async Task<Results<Ok<Customer>, NotFound>> (
+    Guid id,
+    ApplicationDbContext dbContext) => {
+
+        var customerId = new CustomerId(id);
+        var customer = await dbContext.Customers.FindAsync(customerId);
+        if (customer is null)
+        {
+            return TypedResults.NotFound();
+        }
+        else
+        {
+            return TypedResults.Ok(customer);
+        }
+    })
+.WithName("GetCustomer")
+.WithOpenApi();
+
+app.MapPost("/customers", async (RegisterNewCustomerRequest request, ApplicationDbContext dbContext) =>
+{
+    dbContext.Set<Customer>().Add(Customer.New(request.FirstName, request.LastName, request.Email));
+    await dbContext.SaveChangesAsync();
+})
+.WithName("RegisterNewCustomer")
 .WithOpenApi();
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+public sealed record RegisterNewCustomerRequest(string FirstName, string LastName, string Email);
